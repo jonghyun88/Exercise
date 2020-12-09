@@ -1,0 +1,80 @@
+# realsense t265에서 odom을 받아 tf로 publish 해주는 코드이다.
+# 다음의 예제 코드를 참고하였다.(https://gist.github.com/atotto/f2754f75bedb6ea56e3e0264ec405dcf)
+
+#!/usr/bin/env python
+
+import math
+from math import sin, cos, pi
+
+import rospy
+import tf
+from std_msgs.msg import Header
+from nav_msgs.msg import Odometry
+from geometry_msgs.msg import Point, Pose, Quaternion, Twist, Vector3
+
+class HoverBoardOdom(object):
+    def __init__(self):
+        self.odom_sub = rospy.Subscriber('/camera/odom/sample', Odometry, self.odomCallback)
+        self.odom_pub = rospy.Publisher("odom", Odometry, queue_size=50)
+        self.odom_broadcaster = tf.TransformBroadcaster()
+
+        self.current_time = rospy.Time.now()
+        self.last_time = rospy.Time.now()
+
+        self.header = Header()
+        self.pose = Pose()
+        self.twist = Twist()
+
+        self.odom = Odometry()
+
+        self.rate = rospy.Rate(1.0)
+
+    def odomCallback(self, msg):
+        self.odom = msg
+
+    def pubOdom(self):
+        self.current_time = rospy.Time.now()
+
+        # first, we'll publish the transform over tf
+        position = self.odom.pose.pose.position
+        orientation_raw = self.odom.pose.pose.orientation
+        orientation = (orientation_raw.x, orientation_raw.y, orientation_raw.z, orientation_raw.w )
+        self.odom_broadcaster.sendTransform(
+            (position.x, position.y, position.z),
+            orientation,
+            self.current_time,
+            "base_footprint",
+            "odom"
+        )
+
+        # next, we'll publish the odometry message over ROS
+        # odom = Odometry()
+        self.odom.header.stamp = self.current_time
+        self.odom.header.frame_id = "odom"
+
+        # set the position
+        # odom.pose.pose = Pose(Point(x, y, 0.), Quaternion(*odom_quat))
+
+        # set the velocity
+        self.odom.child_frame_id = "base_footprint"
+        # odom.twist.twist = Twist(Vector3(vx, vy, 0), Vector3(0, 0, vth))
+
+        # publish the message
+        self.odom_pub.publish(self.odom)
+
+
+if __name__=="__main__":    
+    try:
+        rospy.init_node('t265_odom_publisher')
+        rate = rospy.Rate(50.0)
+
+        hover_odom = HoverBoardOdom()
+
+        while not rospy.is_shutdown():
+            hover_odom.pubOdom()
+            rate.sleep()
+    except Exception as e:
+        rospy.logerr(e)
+    finally:
+        pass
+        
